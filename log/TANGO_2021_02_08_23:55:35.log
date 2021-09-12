@@ -1,0 +1,6 @@
+02-08 23:55 TANGO_2021_02_08_23:55:35 INFO     {'gde_core': 'mgcn', 'score_func': 'tucker', 'core_layer': 2, 'num_epoch': 500, 'test_step': 1, 'input_step': 2, 'delta_step': 0, 'target_step': 1, 'initsize': 300, 'embsize': 300, 'hidsize': 300, 'lr': 0.001, 'solver': 'rk4', 'atol': 0.0001, 'rtol': 0.001, 'device': 'cuda:1', 'dataset': 'ICEWS05-15', 'scale': 0.01, 'dropout': 0.3, 'bias': True, 'adjoint_flag': True, 'opn': 'mult', 'shuffle': True, 'cheby_grid': 3, 'resume': False, 'name': 'TANGO_2021_02_08_23:55:35', 'sample_size': 5000, 'jump': True, 'jump_init': 0.01, 'activation': 'relu', 'res': True, 'rel_jump': True, 'induct_test': False}
+02-08 23:55 TANGO_2021_02_08_23:55:35 INFO     number of entities:10488
+02-08 23:55 TANGO_2021_02_08_23:55:35 INFO     number of relations:251
+02-08 23:55 TANGO_2021_02_08_23:55:35 INFO     number of training snapshots:3245
+02-08 23:55 TANGO_2021_02_08_23:55:35 INFO     number of validation snapshots:404
+02-08 23:55 TANGO_2021_02_08_23:55:35 INFO     number of testing snapshots:368
