@@ -53,6 +53,7 @@ def get_data_with_t(data, tim, split):
     adj_mtx_idx = [] # adjacency matrix element index whose value is 1
     sr2o = ddict(set)
     neib = ddict(set)
+    so2r = ddict(set)
     for trp_idx in range(len(e1)):
         sr2o[(e1[trp_idx], rel[trp_idx])].add(e2[trp_idx])
         sr2o[(e2[trp_idx], rel[trp_idx] + num_rel)].add(e1[trp_idx])
@@ -60,10 +61,13 @@ def get_data_with_t(data, tim, split):
         neib[e2[trp_idx]].add(e1[trp_idx])
         #adj_mtx[e1[trp_idx], e2[trp_idx]] = 1 # adjacency matrix
         #adj_mtx[e2[trp_idx], e1[trp_idx]] = 1
-        adj_mtx_idx.append([e1[trp_idx], e2[trp_idx]])
-        adj_mtx_idx.append([e2[trp_idx], e1[trp_idx]])
+        adj_mtx_idx.append([e1[trp_idx], rel[trp_idx], e2[trp_idx]])
+        adj_mtx_idx.append([e2[trp_idx], rel[trp_idx] + num_rel, e1[trp_idx]])
+        so2r[(e1[trp_idx], e2[trp_idx])].add(rel[trp_idx])
+        so2r[(e2[trp_idx], e1[trp_idx])].add(rel[trp_idx] + num_rel)
     sr2o_tmp = {k: list(v) for k, v in sr2o.items()}
     neib_tmp = {k: list(v) for k, v in neib.items()}
+    so2r_tmp = {k: list(v) for k, v in so2r.items()}
 
     adj_mtx_idx_unique = np.unique(adj_mtx_idx, axis=0)
     adj_mtx_idx = torch.tensor(adj_mtx_idx_unique, dtype=int).t()
@@ -85,7 +89,7 @@ def get_data_with_t(data, tim, split):
             trp2.append({'triple': (obj, pre + num_rel, sub), 'label': sr2o_tmp[(obj, pre + num_rel)]})
         trp_eval = [trp1, trp2]
 
-    return triplet_unique.transpose(), sr2o_tmp, trp, trp_eval, neib_tmp, torch.sparse_coo_tensor(adj_mtx_idx, adj_one, [num_e, num_e])
+    return triplet_unique.transpose(), sr2o_tmp, trp, trp_eval, neib_tmp, torch.sparse_coo_tensor(adj_mtx_idx, adj_one, [num_e, num_e]), so2r_tmp
 
 def construct_adj(data, num_rel):
     edge_index, edge_type = [], []
@@ -131,6 +135,7 @@ triples = ddict(list)
 adjs = ddict(list)
 timestamp = ddict(list)
 nei = ddict(list)
+so2r_all = ddict(list)
 adjlist = []
 num_e, num_rel = get_total_number('', 'stat.txt')
 
@@ -141,9 +146,10 @@ for split in ['train', 'valid', 'test']:
     for ts_ in ts:
         print(ts_)
         timestamp[split].append(ts_)
-        data_ts_, sr2o, trp, trp_eval, neib, adj_mtx = get_data_with_t(quadruple, ts_, split)
+        data_ts_, sr2o, trp, trp_eval, neib, adj_mtx, so2r = get_data_with_t(quadruple, ts_, split)
         data[split].append(data_ts_) # data without inv rel
         sr2o_all[split].append(sr2o) # with inv rel
+        so2r_all[split].append(so2r)
         nei[split].append(neib)
         adjlist.append(adj_mtx)
 
@@ -166,6 +172,7 @@ triples = dict(triples)
 adjs = dict(adjs)
 timestamp = dict(timestamp)
 nei = dict(nei)
+so2r_all = ddict(list)
 
 with open('t_indep_trp.pkl', 'wb') as fp:
     pickle.dump(t_indep_trp, fp)
@@ -190,3 +197,6 @@ with open('neighbor_tKG.pkl', 'wb') as fp:
 
 with open('adjlist_tKG.pkl', 'wb') as fp:
     pickle.dump(adjlist, fp)
+    
+with open('so2r_all_tKG.pkl', 'wb') as fp:
+    pickle.dump(so2r_all, fp)
