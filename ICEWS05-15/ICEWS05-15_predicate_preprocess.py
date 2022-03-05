@@ -172,7 +172,6 @@ triples = dict(triples)
 adjs = dict(adjs)
 timestamp = dict(timestamp)
 nei = dict(nei)
-so2r_all = ddict(list)
 
 with open('t_indep_trp.pkl', 'wb') as fp:
     pickle.dump(t_indep_trp, fp)
