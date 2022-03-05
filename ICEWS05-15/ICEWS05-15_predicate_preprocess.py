@@ -89,7 +89,7 @@ def get_data_with_t(data, tim, split):
             trp2.append({'triple': (obj, pre + num_rel, sub), 'label': sr2o_tmp[(obj, pre + num_rel)]})
         trp_eval = [trp1, trp2]
 
-    return triplet_unique.transpose(), sr2o_tmp, trp, trp_eval, neib_tmp, torch.sparse_coo_tensor(adj_mtx_idx, adj_one, [num_e, num_e]), so2r_tmp
+    return triplet_unique.transpose(), sr2o_tmp, trp, trp_eval, neib_tmp, torch.sparse_coo_tensor(adj_mtx_idx, adj_one, [num_e, 2 * num_rel, num_e]), so2r_tmp
 
 def construct_adj(data, num_rel):
     edge_index, edge_type = [], []
