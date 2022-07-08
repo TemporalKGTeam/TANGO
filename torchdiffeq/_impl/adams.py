@@ -2,20 +2,38 @@ import collections
 import torch
 from .solvers import AdaptiveStepsizeODESolver
 from .misc import (
-    _handle_unused_kwargs, _select_initial_step,
-    _optimal_step_size, _compute_error_ratio
+    _handle_unused_kwargs,
+    _select_initial_step,
+    _optimal_step_size,
+    _compute_error_ratio,
 )
 
 _MIN_ORDER = 1
 _MAX_ORDER = 12
 
 gamma_star = [
-    1, -1 / 2, -1 / 12, -1 / 24, -19 / 720, -3 / 160, -863 / 60480, -275 / 24192, -33953 / 3628800, -0.00789255,
-    -0.00678585, -0.00592406, -0.00523669, -0.0046775, -0.00421495, -0.0038269
+    1,
+    -1 / 2,
+    -1 / 12,
+    -1 / 24,
+    -19 / 720,
+    -3 / 160,
+    -863 / 60480,
+    -275 / 24192,
+    -33953 / 3628800,
+    -0.00789255,
+    -0.00678585,
+    -0.00592406,
+    -0.00523669,
+    -0.0046775,
+    -0.00421495,
+    -0.0038269,
 ]
 
 
-class _VCABMState(collections.namedtuple('_VCABMState', 'y_n, prev_f, prev_t, next_t, phi, order')):
+class _VCABMState(
+    collections.namedtuple("_VCABMState", "y_n, prev_f, prev_t, next_t, phi, order")
+):
     """Saved state of the variable step size Adams-Bashforth-Moulton solver as described in
 
         Solving Ordinary Differential Equations I - Nonstiff Problems III.5
@@ -54,15 +72,29 @@ def compute_implicit_phi(explicit_phi, f_n, k):
     implicit_phi = collections.deque(maxlen=k)
     implicit_phi.append(f_n)
     for j in range(1, k):
-        implicit_phi.append(tuple(iphi_ - ephi_ for iphi_, ephi_ in zip(implicit_phi[j - 1], explicit_phi[j - 1])))
+        implicit_phi.append(
+            tuple(
+                iphi_ - ephi_
+                for iphi_, ephi_ in zip(implicit_phi[j - 1], explicit_phi[j - 1])
+            )
+        )
     return implicit_phi
 
 
 class VariableCoefficientAdamsBashforth(AdaptiveStepsizeODESolver):
-
     def __init__(
-        self, func, y0, rtol, atol, implicit=True, first_step=None, max_order=_MAX_ORDER, safety=0.9, ifactor=10.0, dfactor=0.2,
-        **unused_kwargs
+        self,
+        func,
+        y0,
+        rtol,
+        atol,
+        implicit=True,
+        first_step=None,
+        max_order=_MAX_ORDER,
+        safety=0.9,
+        ifactor=10.0,
+        dfactor=0.2,
+        **unused_kwargs,
     ):
         _handle_unused_kwargs(self, unused_kwargs)
         del unused_kwargs
@@ -74,9 +106,15 @@ class VariableCoefficientAdamsBashforth(AdaptiveStepsizeODESolver):
         self.implicit = implicit
         self.first_step = first_step
         self.max_order = int(max(_MIN_ORDER, min(max_order, _MAX_ORDER)))
-        self.safety = _convert_to_tensor(safety, dtype=torch.float64, device=y0[0].device)
-        self.ifactor = _convert_to_tensor(ifactor, dtype=torch.float64, device=y0[0].device)
-        self.dfactor = _convert_to_tensor(dfactor, dtype=torch.float64, device=y0[0].device)
+        self.safety = _convert_to_tensor(
+            safety, dtype=torch.float64, device=y0[0].device
+        )
+        self.ifactor = _convert_to_tensor(
+            ifactor, dtype=torch.float64, device=y0[0].device
+        )
+        self.dfactor = _convert_to_tensor(
+            dfactor, dtype=torch.float64, device=y0[0].device
+        )
 
     def before_integrate(self, t):
         prev_f = collections.deque(maxlen=self.max_order + 1)
@@ -89,11 +127,17 @@ class VariableCoefficientAdamsBashforth(AdaptiveStepsizeODESolver):
         prev_f.appendleft(f0)
         phi.appendleft(f0)
         if self.first_step is None:
-            first_step = _select_initial_step(self.func, t[0], self.y0, 2, self.rtol[0], self.atol[0], f0=f0).to(t)
+            first_step = _select_initial_step(
+                self.func, t[0], self.y0, 2, self.rtol[0], self.atol[0], f0=f0
+            ).to(t)
         else:
-            first_step = _select_initial_step(self.func, t[0], self.y0, 2, self.rtol[0], self.atol[0], f0=f0).to(t)
+            first_step = _select_initial_step(
+                self.func, t[0], self.y0, 2, self.rtol[0], self.atol[0], f0=f0
+            ).to(t)
 
-        self.vcabm_state = _VCABMState(self.y0, prev_f, prev_t, next_t=t[0] + first_step, phi=phi, order=1)
+        self.vcabm_state = _VCABMState(
+            self.y0, prev_f, prev_t, next_t=t[0] + first_step, phi=phi, order=1
+        )
 
     def advance(self, final_t):
         final_t = _convert_to_tensor(final_t).to(self.vcabm_state.prev_t[0])
@@ -106,14 +150,17 @@ class VariableCoefficientAdamsBashforth(AdaptiveStepsizeODESolver):
         y0, prev_f, prev_t, next_t, prev_phi, order = vcabm_state
         if next_t > final_t:
             next_t = final_t
-        dt = (next_t - prev_t[0])
+        dt = next_t - prev_t[0]
         dt_cast = dt.to(y0[0])
 
         # Explicit predictor step.
         g, phi = g_and_explicit_phi(prev_t, next_t, prev_phi, order)
         g = g.to(y0[0])
         p_next = tuple(
-            y0_ + _scaled_dot_product(dt_cast, g[:max(1, order - 1)], phi_[:max(1, order - 1)])
+            y0_
+            + _scaled_dot_product(
+                dt_cast, g[: max(1, order - 1)], phi_[: max(1, order - 1)]
+            )
             for y0_, phi_ in zip(y0, tuple(zip(*phi)))
         )
 
@@ -123,7 +170,8 @@ class VariableCoefficientAdamsBashforth(AdaptiveStepsizeODESolver):
 
         # Implicit corrector step.
         y_next = tuple(
-            p_next_ + dt_cast * g[order - 1] * iphi_ for p_next_, iphi_ in zip(p_next, implicit_phi_p[order - 1])
+            p_next_ + dt_cast * g[order - 1] * iphi_
+            for p_next_, iphi_ in zip(p_next, implicit_phi_p[order - 1])
         )
 
         # Error estimation.
@@ -131,14 +179,21 @@ class VariableCoefficientAdamsBashforth(AdaptiveStepsizeODESolver):
             atol_ + rtol_ * torch.max(torch.abs(y0_), torch.abs(y1_))
             for atol_, rtol_, y0_, y1_ in zip(self.atol, self.rtol, y0, y_next)
         )
-        local_error = tuple(dt_cast * (g[order] - g[order - 1]) * iphi_ for iphi_ in implicit_phi_p[order])
+        local_error = tuple(
+            dt_cast * (g[order] - g[order - 1]) * iphi_
+            for iphi_ in implicit_phi_p[order]
+        )
         error_k = _compute_error_ratio(local_error, tolerance)
         accept_step = (torch.tensor(error_k) <= 1).all()
 
         if not accept_step:
             # Retry with adjusted step size if step is rejected.
-            dt_next = _optimal_step_size(dt, error_k, self.safety, self.ifactor, self.dfactor, order=order)
-            return _VCABMState(y0, prev_f, prev_t, prev_t[0] + dt_next, prev_phi, order=order)
+            dt_next = _optimal_step_size(
+                dt, error_k, self.safety, self.ifactor, self.dfactor, order=order
+            )
+            return _VCABMState(
+                y0, prev_f, prev_t, prev_t[0] + dt_next, prev_phi, order=order
+            )
 
         # We accept the step. Evaluate f and update phi.
         next_f0 = self.func(next_t.to(p_next[0]), y_next)
@@ -150,25 +205,43 @@ class VariableCoefficientAdamsBashforth(AdaptiveStepsizeODESolver):
             next_order = min(order + 1, 3, self.max_order)
         else:
             error_km1 = _compute_error_ratio(
-                tuple(dt_cast * (g[order - 1] - g[order - 2]) * iphi_ for iphi_ in implicit_phi_p[order - 1]), tolerance
+                tuple(
+                    dt_cast * (g[order - 1] - g[order - 2]) * iphi_
+                    for iphi_ in implicit_phi_p[order - 1]
+                ),
+                tolerance,
             )
             error_km2 = _compute_error_ratio(
-                tuple(dt_cast * (g[order - 2] - g[order - 3]) * iphi_ for iphi_ in implicit_phi_p[order - 2]), tolerance
+                tuple(
+                    dt_cast * (g[order - 2] - g[order - 3]) * iphi_
+                    for iphi_ in implicit_phi_p[order - 2]
+                ),
+                tolerance,
             )
             if min(error_km1 + error_km2) < max(error_k):
                 next_order = order - 1
             elif order < self.max_order:
                 error_kp1 = _compute_error_ratio(
-                    tuple(dt_cast * gamma_star[order] * iphi_ for iphi_ in implicit_phi_p[order]), tolerance
+                    tuple(
+                        dt_cast * gamma_star[order] * iphi_
+                        for iphi_ in implicit_phi_p[order]
+                    ),
+                    tolerance,
                 )
                 if max(error_kp1) < max(error_k):
                     next_order = order + 1
 
         # Keep step size constant if increasing order. Else use adaptive step size.
-        dt_next = dt if next_order > order else _optimal_step_size(
-            dt, error_k, self.safety, self.ifactor, self.dfactor, order=order + 1
+        dt_next = (
+            dt
+            if next_order > order
+            else _optimal_step_size(
+                dt, error_k, self.safety, self.ifactor, self.dfactor, order=order + 1
+            )
         )
 
         prev_f.appendleft(next_f0)
         prev_t.appendleft(next_t)
-        return _VCABMState(p_next, prev_f, prev_t, next_t + dt_next, implicit_phi, order=next_order)
+        return _VCABMState(
+            p_next, prev_f, prev_t, next_t + dt_next, implicit_phi, order=next_order
+        )

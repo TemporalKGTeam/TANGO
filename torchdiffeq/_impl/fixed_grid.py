@@ -6,7 +6,7 @@ from .rk_common import rk4_alt_step_func
 class Euler(FixedGridODESolver):
     order = 1
 
-    def __init__(self, eps=0., **kwargs):
+    def __init__(self, eps=0.0, **kwargs):
         super(Euler, self).__init__(**kwargs)
         self.eps = torch.as_tensor(eps, dtype=self.dtype, device=self.device)
 
@@ -17,7 +17,7 @@ class Euler(FixedGridODESolver):
 class Midpoint(FixedGridODESolver):
     order = 2
 
-    def __init__(self, eps=0., **kwargs):
+    def __init__(self, eps=0.0, **kwargs):
         super(Midpoint, self).__init__(**kwargs)
         self.eps = torch.as_tensor(eps, dtype=self.dtype, device=self.device)
 
@@ -30,7 +30,7 @@ class Midpoint(FixedGridODESolver):
 class RK4(FixedGridODESolver):
     order = 4
 
-    def __init__(self, eps=0., **kwargs):
+    def __init__(self, eps=0.0, **kwargs):
         super(RK4, self).__init__(**kwargs)
         self.eps = torch.as_tensor(eps, dtype=self.dtype, device=self.device)
 
