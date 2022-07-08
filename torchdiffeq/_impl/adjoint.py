@@ -1,14 +1,38 @@
 import torch
 import torch.nn as nn
 from .odeint import SOLVERS, odeint
-from .misc import _check_inputs, _flat_to_shape, _rms_norm, _mixed_linf_rms_norm, _wrap_norm, cby_grid_type1, barycentric_weights, _cby1_interp
+from .misc import (
+    _check_inputs,
+    _flat_to_shape,
+    _rms_norm,
+    _mixed_linf_rms_norm,
+    _wrap_norm,
+    cby_grid_type1,
+    barycentric_weights,
+    _cby1_interp,
+)
 
 
 class OdeintAdjointMethod(torch.autograd.Function):
-
     @staticmethod
-    def forward(ctx, shapes, func, y0, t, rtol, atol, method, options, adjoint_rtol, adjoint_atol, adjoint_method, cheby_grid,
-                adjoint_options, t_requires_grad, *adjoint_params):
+    def forward(
+        ctx,
+        shapes,
+        func,
+        y0,
+        t,
+        rtol,
+        atol,
+        method,
+        options,
+        adjoint_rtol,
+        adjoint_atol,
+        adjoint_method,
+        cheby_grid,
+        adjoint_options,
+        t_requires_grad,
+        *adjoint_params,
+    ):
 
         ctx.shapes = shapes
         ctx.func = func
@@ -17,24 +41,41 @@ class OdeintAdjointMethod(torch.autograd.Function):
         ctx.adjoint_method = adjoint_method
         ctx.adjoint_options = adjoint_options
         ctx.t_requires_grad = t_requires_grad
-        ctx.cheby = cheby_grid # cheby node number
+        ctx.cheby = cheby_grid  # cheby node number
 
         ###########################################################################################################
         if cheby_grid > 0:
-            #ctx.cheby = 1 # cheby flag
+            # ctx.cheby = 1 # cheby flag
             num_cby_grids = cheby_grid
-            ctx.cby_grids = torch.tensor(cby_grid_type1(t_min=t[0].item(), t_max=t[-1].item(), n=num_cby_grids),
-                                         device=y0[0].device, dtype=torch.float32)
-            ctx.weights = torch.tensor(barycentric_weights(num_cby_grids), device=y0[0].device, dtype=torch.float32)
+            ctx.cby_grids = torch.tensor(
+                cby_grid_type1(t_min=t[0].item(), t_max=t[-1].item(), n=num_cby_grids),
+                device=y0[0].device,
+                dtype=torch.float32,
+            )
+            ctx.weights = torch.tensor(
+                barycentric_weights(num_cby_grids),
+                device=y0[0].device,
+                dtype=torch.float32,
+            )
             with torch.no_grad():
-                y = odeint(func, y0, ctx.cby_grids, rtol=rtol, atol=atol, method=method, options=options)
+                y = odeint(
+                    func,
+                    y0,
+                    ctx.cby_grids,
+                    rtol=rtol,
+                    atol=atol,
+                    method=method,
+                    options=options,
+                )
             ctx.values = y
             y = torch.cat((y[0:1], y[-1:]), 0)
             ctx.save_for_backward(t, y, *adjoint_params)
         else:
-            #ctx.cheby = 0 # cheby flag
+            # ctx.cheby = 0 # cheby flag
             with torch.no_grad():
-                y = odeint(func, y0, t, rtol=rtol, atol=atol, method=method, options=options)
+                y = odeint(
+                    func, y0, t, rtol=rtol, atol=atol, method=method, options=options
+                )
             ctx.save_for_backward(t, y, *adjoint_params)
 
         return y
@@ -69,19 +110,19 @@ class OdeintAdjointMethod(torch.autograd.Function):
             # We assume that any grid points are given to us ordered in the same direction as for the forward pass (for
             # compatibility with setting adjoint_options = options), so we need to flip them around here.
             try:
-                grid_points = adjoint_options['grid_points']
+                grid_points = adjoint_options["grid_points"]
             except KeyError:
                 pass
             else:
-                adjoint_options['grid_points'] = grid_points.flip(0)
+                adjoint_options["grid_points"] = grid_points.flip(0)
 
             # Backward compatibility: by default use a mixed L-infinity/RMS norm over the input, where we treat t, each
             # element of y, and each element of adj_y separately over the Linf, but consider all the parameters
             # together.
-            #if 'norm' not in adjoint_options:
+            # if 'norm' not in adjoint_options:
             #    if shapes is None:
             #        shapes = [y[-1].shape]  # [-1] because y has shape (len(t), *y0.shape)
-                # adj_t, y, adj_y, adj_params, corresponding to the order in aug_state below
+            # adj_t, y, adj_y, adj_params, corresponding to the order in aug_state below
             #    adjoint_shapes = [torch.Size(())] + shapes + shapes + [torch.Size([sum(param.numel()
             #                                                                           for param in adjoint_params)])]
             #    adjoint_options['norm'] = _mixed_linf_rms_norm(adjoint_shapes)
@@ -92,12 +133,23 @@ class OdeintAdjointMethod(torch.autograd.Function):
             ##################################
             if cheby_flag:
                 # For interpolation, without y
-                aug_state = [torch.zeros((), dtype=y.dtype, device=y.device), grad_y[-1]]  # vjp_t, vjp_y
-                aug_state.extend([torch.zeros_like(param) for param in adjoint_params])  # vjp_params
+                aug_state = [
+                    torch.zeros((), dtype=y.dtype, device=y.device),
+                    grad_y[-1],
+                ]  # vjp_t, vjp_y
+                aug_state.extend(
+                    [torch.zeros_like(param) for param in adjoint_params]
+                )  # vjp_params
             else:
                 # [-1] because y and grad_y are both of shape (len(t), *y0.shape)
-                aug_state = [torch.zeros((), dtype=y.dtype, device=y.device), y[-1], grad_y[-1]]  # vjp_t, y, vjp_y
-                aug_state.extend([torch.zeros_like(param) for param in adjoint_params])  # vjp_params
+                aug_state = [
+                    torch.zeros((), dtype=y.dtype, device=y.device),
+                    y[-1],
+                    grad_y[-1],
+                ]  # vjp_t, y, vjp_y
+                aug_state.extend(
+                    [torch.zeros_like(param) for param in adjoint_params]
+                )  # vjp_params
             ###########################################################################################################
 
             ##################################
@@ -127,20 +179,31 @@ class OdeintAdjointMethod(torch.autograd.Function):
                     # Workaround for PyTorch bug #39784
                     _t = torch.as_strided(t, (), ())
                     _y = torch.as_strided(y, (), ())
-                    _params = tuple(torch.as_strided(param, (), ()) for param in adjoint_params)
+                    _params = tuple(
+                        torch.as_strided(param, (), ()) for param in adjoint_params
+                    )
 
                     vjp_t, vjp_y, *vjp_params = torch.autograd.grad(
-                        func_eval, (t, y) + adjoint_params, -adj_y,
-                        allow_unused=True, retain_graph=True
+                        func_eval,
+                        (t, y) + adjoint_params,
+                        -adj_y,
+                        allow_unused=True,
+                        retain_graph=True,
                     )
 
                 # autograd.grad returns None if no gradient, set to zero.
                 vjp_t = torch.zeros_like(t) if vjp_t is None else vjp_t
                 vjp_y = torch.zeros_like(y) if vjp_y is None else vjp_y
-                vjp_params = [torch.zeros_like(param) if vjp_param is None else vjp_param
-                              for param, vjp_param in zip(adjoint_params, vjp_params)]
+                vjp_params = [
+                    torch.zeros_like(param) if vjp_param is None else vjp_param
+                    for param, vjp_param in zip(adjoint_params, vjp_params)
+                ]
 
-                return (vjp_t, vjp_y, *vjp_params)  # For interpolation, without func_eval
+                return (
+                    vjp_t,
+                    vjp_y,
+                    *vjp_params,
+                )  # For interpolation, without func_eval
 
             def augmented_dynamics(t, y_aug):
                 # Dynamics of the original system augmented with
@@ -162,21 +225,27 @@ class OdeintAdjointMethod(torch.autograd.Function):
                     # Workaround for PyTorch bug #39784
                     _t = torch.as_strided(t, (), ())
                     _y = torch.as_strided(y, (), ())
-                    _params = tuple(torch.as_strided(param, (), ()) for param in adjoint_params)
+                    _params = tuple(
+                        torch.as_strided(param, (), ()) for param in adjoint_params
+                    )
 
                     vjp_t, vjp_y, *vjp_params = torch.autograd.grad(
-                        func_eval, (t, y) + adjoint_params, -adj_y,
-                        allow_unused=True, retain_graph=True
+                        func_eval,
+                        (t, y) + adjoint_params,
+                        -adj_y,
+                        allow_unused=True,
+                        retain_graph=True,
                     )
 
                 # autograd.grad returns None if no gradient, set to zero.
                 vjp_t = torch.zeros_like(t) if vjp_t is None else vjp_t
                 vjp_y = torch.zeros_like(y) if vjp_y is None else vjp_y
-                vjp_params = [torch.zeros_like(param) if vjp_param is None else vjp_param
-                              for param, vjp_param in zip(adjoint_params, vjp_params)]
+                vjp_params = [
+                    torch.zeros_like(param) if vjp_param is None else vjp_param
+                    for param, vjp_param in zip(adjoint_params, vjp_params)
+                ]
 
                 return (vjp_t, func_eval, vjp_y, *vjp_params)
-
 
             ##################################
             #       Solve adjoint ODE        #
@@ -198,24 +267,40 @@ class OdeintAdjointMethod(torch.autograd.Function):
                 if cheby_flag:
                     # Run the augmented system backwards in time.
                     aug_state = odeint(
-                        augmented_dynamics_cheby, tuple(aug_state),
-                        t[i - 1:i + 1].flip(0),
-                        rtol=adjoint_rtol, atol=adjoint_atol, method=adjoint_method, options=adjoint_options
+                        augmented_dynamics_cheby,
+                        tuple(aug_state),
+                        t[i - 1 : i + 1].flip(0),
+                        rtol=adjoint_rtol,
+                        atol=adjoint_atol,
+                        method=adjoint_method,
+                        options=adjoint_options,
                     )
-                    aug_state = [a[1] for a in aug_state]  # extract just the t[i - 1] value
-                ######################################################################################################
+                    aug_state = [
+                        a[1] for a in aug_state
+                    ]  # extract just the t[i - 1] value
+                    ######################################################################################################
                     aug_state[1] += grad_y[i - 1]  # For Interpolation, y is neglected
                 ######################################################################################################
                 else:
                     # Run the augmented system backwards in time.
                     aug_state = odeint(
-                        augmented_dynamics, tuple(aug_state),
-                        t[i - 1:i + 1].flip(0),
-                        rtol=adjoint_rtol, atol=adjoint_atol, method=adjoint_method, options=adjoint_options
+                        augmented_dynamics,
+                        tuple(aug_state),
+                        t[i - 1 : i + 1].flip(0),
+                        rtol=adjoint_rtol,
+                        atol=adjoint_atol,
+                        method=adjoint_method,
+                        options=adjoint_options,
                     )
-                    aug_state = [a[1] for a in aug_state]  # extract just the t[i - 1] value
-                    aug_state[1] = y[i - 1]  # update to use our forward-pass estimate of the state
-                    aug_state[2] += grad_y[i - 1]  # update any gradients wrt state at this time point
+                    aug_state = [
+                        a[1] for a in aug_state
+                    ]  # extract just the t[i - 1] value
+                    aug_state[1] = y[
+                        i - 1
+                    ]  # update to use our forward-pass estimate of the state
+                    aug_state[2] += grad_y[
+                        i - 1
+                    ]  # update any gradients wrt state at this time point
 
             if t_requires_grad:
                 time_vjps[0] = aug_state[0]
@@ -230,18 +315,49 @@ class OdeintAdjointMethod(torch.autograd.Function):
                 adj_params = aug_state[3:]
             ###########################################################################################################
 
-        return (None, None, adj_y, time_vjps, None, None, None, None, None, None, None, None, None, None, *adj_params)
+        return (
+            None,
+            None,
+            adj_y,
+            time_vjps,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            *adj_params,
+        )
 
 
-def odeint_adjoint(func, y0, t, rtol=1e-7, atol=1e-9, method=None, options=None, adjoint_rtol=None, adjoint_atol=None,
-                   adjoint_method=None, cheby_grid=0, adjoint_options=None, adjoint_params=None):
+def odeint_adjoint(
+    func,
+    y0,
+    t,
+    rtol=1e-7,
+    atol=1e-9,
+    method=None,
+    options=None,
+    adjoint_rtol=None,
+    adjoint_atol=None,
+    adjoint_method=None,
+    cheby_grid=0,
+    adjoint_options=None,
+    adjoint_params=None,
+):
 
     # We need this in order to access the variables inside this module,
     # since we have no other way of getting variables along the execution path.
     if adjoint_params is None and not isinstance(func, nn.Module):
-        raise ValueError('func must be an instance of nn.Module to specify the adjoint parameters; alternatively they '
-                         'can be specified explicitly via the `adjoint_params` argument. If there are no parameters '
-                         'then it is allowable to set `adjoint_params=()`.')
+        raise ValueError(
+            "func must be an instance of nn.Module to specify the adjoint parameters; alternatively they "
+            "can be specified explicitly via the `adjoint_params` argument. If there are no parameters "
+            "then it is allowable to set `adjoint_params=()`."
+        )
 
     # Must come before _check_inputs as we don't want to use normalised input (in particular any changes to options)
     if adjoint_rtol is None:
@@ -251,21 +367,46 @@ def odeint_adjoint(func, y0, t, rtol=1e-7, atol=1e-9, method=None, options=None,
     if adjoint_method is None:
         adjoint_method = method
     if adjoint_options is None:
-        adjoint_options = {k: v for k, v in options.items() if k != "norm"} if options is not None else {}
+        adjoint_options = (
+            {k: v for k, v in options.items() if k != "norm"}
+            if options is not None
+            else {}
+        )
     if adjoint_params is None:
         adjoint_params = tuple(func.parameters())
 
     # Normalise to non-tupled input
-    shapes, func, y0, t, rtol, atol, method, options = _check_inputs(func, y0, t, rtol, atol, method, options, SOLVERS)
+    shapes, func, y0, t, rtol, atol, method, options = _check_inputs(
+        func, y0, t, rtol, atol, method, options, SOLVERS
+    )
 
     if "norm" in options and "norm" not in adjoint_options:
-        adjoint_shapes = [torch.Size(()), y0.shape, y0.shape] + [torch.Size([sum(param.numel() for param in adjoint_params)])]
-        adjoint_options["norm"] = _wrap_norm([_rms_norm, options["norm"], options["norm"]], adjoint_shapes)
+        adjoint_shapes = [torch.Size(()), y0.shape, y0.shape] + [
+            torch.Size([sum(param.numel() for param in adjoint_params)])
+        ]
+        adjoint_options["norm"] = _wrap_norm(
+            [_rms_norm, options["norm"], options["norm"]], adjoint_shapes
+        )
 
-    #Odeint = OdeintAdjointMethod()
-    #Odeint.add_cheby(cheby_grid=cheby_grid)
-    solution = OdeintAdjointMethod.apply(shapes, func, y0, t, rtol, atol, method, options, adjoint_rtol, adjoint_atol,
-                                         adjoint_method, cheby_grid, adjoint_options, t.requires_grad, *adjoint_params)
+    # Odeint = OdeintAdjointMethod()
+    # Odeint.add_cheby(cheby_grid=cheby_grid)
+    solution = OdeintAdjointMethod.apply(
+        shapes,
+        func,
+        y0,
+        t,
+        rtol,
+        atol,
+        method,
+        options,
+        adjoint_rtol,
+        adjoint_atol,
+        adjoint_method,
+        cheby_grid,
+        adjoint_options,
+        t.requires_grad,
+        *adjoint_params,
+    )
 
     if shapes is not None:
         solution = _flat_to_shape(solution, (len(t),), shapes)

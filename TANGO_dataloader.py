@@ -2,20 +2,23 @@ import numpy as np
 import torch
 import torch.utils
 
+
 class TANGOtrainDataset(torch.utils.data.Dataset):
-    def __init__(self,
-                 params,
-                 triples: list, # triples['train']
-                 adjs: list, # {'edge_index': tensor, 'edge_type': tensor}
-                 adjlist: list, # [adjmtx,...,adjmtx], adjmtx is torch sparse tensor
-                 so2r: list,
-                 num_e: int,
-                 input_steps: int,
-                 target_steps: int,
-                 delta_steps: int = 0,
-                 time_stamps: list = None,
-                 num_samp=None,
-                 neg_samp=None):
+    def __init__(
+        self,
+        params,
+        triples: list,  # triples['train']
+        adjs: list,  # {'edge_index': tensor, 'edge_type': tensor}
+        adjlist: list,  # [adjmtx,...,adjmtx], adjmtx is torch sparse tensor
+        so2r: list,
+        num_e: int,
+        input_steps: int,
+        target_steps: int,
+        delta_steps: int = 0,
+        time_stamps: list = None,
+        num_samp=None,
+        neg_samp=None,
+    ):
 
         assert isinstance(triples, list)
         self.p = params
@@ -29,73 +32,114 @@ class TANGOtrainDataset(torch.utils.data.Dataset):
         self.so2r = so2r
         self.neg_samp = neg_samp
 
-        self.len = len(self.triples) - self.input_steps - self.target_steps - self.delta_steps + 1
+        self.len = (
+            len(self.triples)
+            - self.input_steps
+            - self.target_steps
+            - self.delta_steps
+            + 1
+        )
 
-        assert len(triples) == len(time_stamps), "length of time stamps do not match with trajectories"
+        assert len(triples) == len(
+            time_stamps
+        ), "length of time stamps do not match with trajectories"
         self.time_stamps = time_stamps
         self.adjlist = adjlist
 
     def __getitem__(self, idx):
         # target timestamps
         target_time_stamps = []
-        for t_idx in range(idx + self.input_steps + self.delta_steps,
-                           idx + self.input_steps + self.delta_steps + self.target_steps):
+        for t_idx in range(
+            idx + self.input_steps + self.delta_steps,
+            idx + self.input_steps + self.delta_steps + self.target_steps,
+        ):
             target_time_stamps.append(self.time_stamps[t_idx])
 
         # graph info: (sub, rel, obj)
         triple_input = []
         for i_idx in range(idx, idx + self.input_steps):
-            triple_input.append(torch.tensor([list(trp['triple']) for trp in self.triples[i_idx]]))
+            triple_input.append(
+                torch.tensor([list(trp["triple"]) for trp in self.triples[i_idx]])
+            )
 
         # sub
-        subject_input = [torch.stack([_trp[i,:] for i in range(_trp.shape[0])], dim=0)[:,0]  for _trp in triple_input]
+        subject_input = [
+            torch.stack([_trp[i, :] for i in range(_trp.shape[0])], dim=0)[:, 0]
+            for _trp in triple_input
+        ]
 
         # rel
-        relation_input = [torch.stack([_trp[i,:] for i in range(_trp.shape[0])], dim=0)[:,1]  for _trp in triple_input]
+        relation_input = [
+            torch.stack([_trp[i, :] for i in range(_trp.shape[0])], dim=0)[:, 1]
+            for _trp in triple_input
+        ]
 
         # obj
-        object_input = [torch.stack([_trp[i,:] for i in range(_trp.shape[0])], dim=0)[:,2]  for _trp in triple_input]
-
+        object_input = [
+            torch.stack([_trp[i, :] for i in range(_trp.shape[0])], dim=0)[:, 2]
+            for _trp in triple_input
+        ]
 
         # graph info: label corresponding to (sub, rel, obj)
         label_input = []
         for i_idx in range(idx, idx + self.input_steps):
-            label_input.append(torch.stack([self.get_label(trp['label']) for trp in self.triples[i_idx]], dim=0))
+            label_input.append(
+                torch.stack(
+                    [self.get_label(trp["label"]) for trp in self.triples[i_idx]], dim=0
+                )
+            )
 
         # pred graph info: (sub, rel, obj)
         triple_tar = []
-        for t_idx in range(idx + self.input_steps + self.delta_steps,
-                           idx + self.input_steps + self.delta_steps + self.target_steps):
-            triple_tar.append(torch.tensor([list(trp['triple']) for trp in self.triples[t_idx]]))
+        for t_idx in range(
+            idx + self.input_steps + self.delta_steps,
+            idx + self.input_steps + self.delta_steps + self.target_steps,
+        ):
+            triple_tar.append(
+                torch.tensor([list(trp["triple"]) for trp in self.triples[t_idx]])
+            )
 
         # sub
-        subject_tar = [torch.stack([_trp[i, :] for i in range(_trp.shape[0])], dim=0)[:, 0] for _trp in triple_tar]
+        subject_tar = [
+            torch.stack([_trp[i, :] for i in range(_trp.shape[0])], dim=0)[:, 0]
+            for _trp in triple_tar
+        ]
 
         # rel
-        relation_tar = [torch.stack([_trp[i, :] for i in range(_trp.shape[0])], dim=0)[:, 1] for _trp in triple_tar]
+        relation_tar = [
+            torch.stack([_trp[i, :] for i in range(_trp.shape[0])], dim=0)[:, 1]
+            for _trp in triple_tar
+        ]
 
         # obj
-        object_tar = [torch.stack([_trp[i, :] for i in range(_trp.shape[0])], dim=0)[:, 2] for _trp in triple_tar]
-
+        object_tar = [
+            torch.stack([_trp[i, :] for i in range(_trp.shape[0])], dim=0)[:, 2]
+            for _trp in triple_tar
+        ]
 
         # pred graph info: label corresponding to (sub, rel, obj)
         label_tar = []
-        for t_idx in range(idx + self.input_steps + self.delta_steps,
-                           idx + self.input_steps + self.delta_steps + self.target_steps):
-            label_tar.append(torch.stack([self.get_label(trp['label']) for trp in self.triples[t_idx]], dim=0))
+        for t_idx in range(
+            idx + self.input_steps + self.delta_steps,
+            idx + self.input_steps + self.delta_steps + self.target_steps,
+        ):
+            label_tar.append(
+                torch.stack(
+                    [self.get_label(trp["label"]) for trp in self.triples[t_idx]], dim=0
+                )
+            )
 
         # input timestamps
         input_time_stamps = []
         for i_idx in range(idx, idx + self.input_steps):
             input_time_stamps.append(self.time_stamps[i_idx])
 
-
         # edge information
         edge_index_list = []
         edge_type_list = []
         for i_idx in range(idx, idx + self.input_steps):
-            edge_index_list.append(self.adjs[i_idx]['edge_index'])
-            edge_type_list.append(self.adjs[i_idx]['edge_type'])
+            edge_index_list.append(self.adjs[i_idx]["edge_index"])
+            edge_type_list.append(self.adjs[i_idx]["edge_type"])
 
         # adjacency tensor ('mtx' means matrix, we preserve this name)
         adj_mtx_list = []
@@ -117,7 +161,15 @@ class TANGOtrainDataset(torch.utils.data.Dataset):
                 for i, a in enumerate(adj_mtx_list):
                     if i != len(adj_mtx_list) - 1:
                         jumped = torch.nonzero(a._values())
-                        edge_id_jump.append(torch.cat([a._indices()[:, jumped][0], a._indices()[:, jumped][2]], dim=1).t())
+                        edge_id_jump.append(
+                            torch.cat(
+                                [
+                                    a._indices()[:, jumped][0],
+                                    a._indices()[:, jumped][2],
+                                ],
+                                dim=1,
+                            ).t()
+                        )
                         edge_w_jump.append(a._values()[jumped])
                         rel_jump.append(a._indices()[:, jumped][1].squeeze(1))
                     else:
@@ -130,33 +182,52 @@ class TANGOtrainDataset(torch.utils.data.Dataset):
                     edge_id_jump.append(a._indices()[:, jumped])
                     edge_w_jump.append(a._values()[jumped].unsqueeze(-1))
 
-        return (subject_input, relation_input, object_input, label_input, subject_tar, relation_tar, object_tar,
-                label_tar, target_time_stamps, input_time_stamps, edge_index_list, edge_type_list, adj_mtx_list,
-                edge_w_jump, edge_id_jump, rel_jump)
+        return (
+            subject_input,
+            relation_input,
+            object_input,
+            label_input,
+            subject_tar,
+            relation_tar,
+            object_tar,
+            label_tar,
+            target_time_stamps,
+            input_time_stamps,
+            edge_index_list,
+            edge_type_list,
+            adj_mtx_list,
+            edge_w_jump,
+            edge_id_jump,
+            rel_jump,
+        )
 
     def __len__(self):
         return self.len
 
     def get_label(self, label):
         y = np.zeros([self.num_e], dtype=np.float32)
-        for e2 in label: y[e2] = 1.0
+        for e2 in label:
+            y[e2] = 1.0
         return torch.FloatTensor(y)
 
+
 class TANGOtestDataset(torch.utils.data.Dataset):
-    def __init__(self,
-                 params,
-                 triples: list, # triples['train']
-                 adjs: list, # {'edge_index': tensor, 'edge_type': tensor}
-                 adjlist: list, # [adjmtx,...,adjmtx], adjmtx is torch sparse tensor
-                 so2r: list,
-                 num_e: int,
-                 input_steps: int,
-                 target_steps: int,
-                 delta_steps: int = 0,
-                 time_stamps: list = None,
-                 t_indep_trp: dict = None,
-                 num_samp=None,
-                 induct_tar=None):
+    def __init__(
+        self,
+        params,
+        triples: list,  # triples['train']
+        adjs: list,  # {'edge_index': tensor, 'edge_type': tensor}
+        adjlist: list,  # [adjmtx,...,adjmtx], adjmtx is torch sparse tensor
+        so2r: list,
+        num_e: int,
+        input_steps: int,
+        target_steps: int,
+        delta_steps: int = 0,
+        time_stamps: list = None,
+        t_indep_trp: dict = None,
+        num_samp=None,
+        induct_tar=None,
+    ):
 
         assert isinstance(triples, list)
         self.p = params
@@ -171,85 +242,152 @@ class TANGOtestDataset(torch.utils.data.Dataset):
         self.t_indep_trp = t_indep_trp
         self.induct_tar = induct_tar
 
-        self.len = len(self.triples) - self.input_steps - self.target_steps - self.delta_steps + 1
+        self.len = (
+            len(self.triples)
+            - self.input_steps
+            - self.target_steps
+            - self.delta_steps
+            + 1
+        )
 
-        assert len(triples) == len(time_stamps), "length of time stamps do not match with trajectories"
+        assert len(triples) == len(
+            time_stamps
+        ), "length of time stamps do not match with trajectories"
         self.time_stamps = time_stamps
         self.adjlist = adjlist
-
 
     def __getitem__(self, idx):
         # target timestamps
         target_time_stamps = []
-        for t_idx in range(idx + self.input_steps + self.delta_steps,
-                           idx + self.input_steps + self.delta_steps + self.target_steps):
+        for t_idx in range(
+            idx + self.input_steps + self.delta_steps,
+            idx + self.input_steps + self.delta_steps + self.target_steps,
+        ):
             target_time_stamps.append(self.time_stamps[t_idx])
 
         # graph info: (sub, rel, obj)
         triple_input = []
         for i_idx in range(idx, idx + self.input_steps):
-            triple_input.append(torch.tensor([list(trp['triple']) for trp in self.triples[i_idx]]))
+            triple_input.append(
+                torch.tensor([list(trp["triple"]) for trp in self.triples[i_idx]])
+            )
 
         # sub
-        subject_input = [torch.stack([_trp[i,:] for i in range(_trp.shape[0])], dim=0)[:,0]  for _trp in triple_input]
+        subject_input = [
+            torch.stack([_trp[i, :] for i in range(_trp.shape[0])], dim=0)[:, 0]
+            for _trp in triple_input
+        ]
 
         # rel
-        relation_input = [torch.stack([_trp[i,:] for i in range(_trp.shape[0])], dim=0)[:,1]  for _trp in triple_input]
+        relation_input = [
+            torch.stack([_trp[i, :] for i in range(_trp.shape[0])], dim=0)[:, 1]
+            for _trp in triple_input
+        ]
 
         # obj
-        object_input = [torch.stack([_trp[i,:] for i in range(_trp.shape[0])], dim=0)[:,2]  for _trp in triple_input]
+        object_input = [
+            torch.stack([_trp[i, :] for i in range(_trp.shape[0])], dim=0)[:, 2]
+            for _trp in triple_input
+        ]
 
         # graph info: label corresponding to (sub, rel, obj)
         label_input = []
         for i_idx in range(idx, idx + self.input_steps):
-            label_input.append(torch.stack([self.get_label(trp['label']) for trp in self.triples[i_idx]], dim=0))
+            label_input.append(
+                torch.stack(
+                    [self.get_label(trp["label"]) for trp in self.triples[i_idx]], dim=0
+                )
+            )
 
         if self.induct_tar == None:
             # pred graph info: (sub, rel, obj)
             triple_tar = []
-            for t_idx in range(idx + self.input_steps + self.delta_steps,
-                               idx + self.input_steps + self.delta_steps + self.target_steps):
-                triple_tar.append(torch.tensor([list(trp['triple']) for trp in self.triples[t_idx]]))
+            for t_idx in range(
+                idx + self.input_steps + self.delta_steps,
+                idx + self.input_steps + self.delta_steps + self.target_steps,
+            ):
+                triple_tar.append(
+                    torch.tensor([list(trp["triple"]) for trp in self.triples[t_idx]])
+                )
 
             # sub
-            subject_tar = [torch.stack([_trp[i, :] for i in range(_trp.shape[0])], dim=0)[:, 0] for _trp in triple_tar]
+            subject_tar = [
+                torch.stack([_trp[i, :] for i in range(_trp.shape[0])], dim=0)[:, 0]
+                for _trp in triple_tar
+            ]
 
             # rel
-            relation_tar = [torch.stack([_trp[i, :] for i in range(_trp.shape[0])], dim=0)[:, 1] for _trp in triple_tar]
+            relation_tar = [
+                torch.stack([_trp[i, :] for i in range(_trp.shape[0])], dim=0)[:, 1]
+                for _trp in triple_tar
+            ]
 
             # obj
-            object_tar = [torch.stack([_trp[i, :] for i in range(_trp.shape[0])], dim=0)[:, 2] for _trp in triple_tar]
-
+            object_tar = [
+                torch.stack([_trp[i, :] for i in range(_trp.shape[0])], dim=0)[:, 2]
+                for _trp in triple_tar
+            ]
 
             # pred graph info: label corresponding to (sub, rel, obj)
             label_tar = []
-            for t_idx in range(idx + self.input_steps + self.delta_steps,
-                               idx + self.input_steps + self.delta_steps + self.target_steps):
-                label_tar.append(torch.stack([self.get_label(trp['label']) for trp in self.triples[t_idx]], dim=0))
+            for t_idx in range(
+                idx + self.input_steps + self.delta_steps,
+                idx + self.input_steps + self.delta_steps + self.target_steps,
+            ):
+                label_tar.append(
+                    torch.stack(
+                        [self.get_label(trp["label"]) for trp in self.triples[t_idx]],
+                        dim=0,
+                    )
+                )
         else:
             # pred graph info: (sub, rel, obj)
             triple_tar = []
-            for t_idx in range(idx + self.input_steps + self.delta_steps,
-                               idx + self.input_steps + self.delta_steps + self.target_steps):
-                    triple_tar.append(torch.tensor([list(trp['triple']) for trp in self.induct_tar[t_idx]]))
+            for t_idx in range(
+                idx + self.input_steps + self.delta_steps,
+                idx + self.input_steps + self.delta_steps + self.target_steps,
+            ):
+                triple_tar.append(
+                    torch.tensor(
+                        [list(trp["triple"]) for trp in self.induct_tar[t_idx]]
+                    )
+                )
             if len(self.induct_tar[t_idx]) == 0:
                 subject_tar, relation_tar, object_tar, label_tar = [], [], [], []
             else:
                 # sub
-                subject_tar = [torch.stack([_trp[i, :] for i in range(_trp.shape[0])], dim=0)[:, 0] for _trp in triple_tar]
+                subject_tar = [
+                    torch.stack([_trp[i, :] for i in range(_trp.shape[0])], dim=0)[:, 0]
+                    for _trp in triple_tar
+                ]
 
                 # rel
-                relation_tar = [torch.stack([_trp[i, :] for i in range(_trp.shape[0])], dim=0)[:, 1] for _trp in triple_tar]
+                relation_tar = [
+                    torch.stack([_trp[i, :] for i in range(_trp.shape[0])], dim=0)[:, 1]
+                    for _trp in triple_tar
+                ]
 
                 # obj
-                object_tar = [torch.stack([_trp[i, :] for i in range(_trp.shape[0])], dim=0)[:, 2] for _trp in triple_tar]
+                object_tar = [
+                    torch.stack([_trp[i, :] for i in range(_trp.shape[0])], dim=0)[:, 2]
+                    for _trp in triple_tar
+                ]
 
                 # pred graph info: label corresponding to (sub, rel, obj)
                 label_tar = []
-                for t_idx in range(idx + self.input_steps + self.delta_steps,
-                                   idx + self.input_steps + self.delta_steps + self.target_steps):
-                    label_tar.append(torch.stack([self.get_label(trp['label']) for trp in self.induct_tar[t_idx]], dim=0))
-
+                for t_idx in range(
+                    idx + self.input_steps + self.delta_steps,
+                    idx + self.input_steps + self.delta_steps + self.target_steps,
+                ):
+                    label_tar.append(
+                        torch.stack(
+                            [
+                                self.get_label(trp["label"])
+                                for trp in self.induct_tar[t_idx]
+                            ],
+                            dim=0,
+                        )
+                    )
 
         # input timestamps
         input_time_stamps = []
@@ -260,15 +398,26 @@ class TANGOtestDataset(torch.utils.data.Dataset):
         edge_index_list = []
         edge_type_list = []
         for i_idx in range(idx, idx + self.input_steps):
-            edge_index_list.append(self.adjs[i_idx]['edge_index'])
-            edge_type_list.append(self.adjs[i_idx]['edge_type'])
+            edge_index_list.append(self.adjs[i_idx]["edge_index"])
+            edge_type_list.append(self.adjs[i_idx]["edge_type"])
 
         # time independent label
         indep_lab = []
-        for t_idx in range(idx + self.input_steps + self.delta_steps,
-                           idx + self.input_steps + self.delta_steps + self.target_steps):
-            indep_lab.append(torch.stack([self.get_label(self.t_indep_trp[(trp['triple'][0], trp['triple'][1])]) for trp in self.triples[t_idx]], dim=0))
-
+        for t_idx in range(
+            idx + self.input_steps + self.delta_steps,
+            idx + self.input_steps + self.delta_steps + self.target_steps,
+        ):
+            indep_lab.append(
+                torch.stack(
+                    [
+                        self.get_label(
+                            self.t_indep_trp[(trp["triple"][0], trp["triple"][1])]
+                        )
+                        for trp in self.triples[t_idx]
+                    ],
+                    dim=0,
+                )
+            )
 
         # adjacency tensor
         adj_mtx_list = []
@@ -291,10 +440,18 @@ class TANGOtestDataset(torch.utils.data.Dataset):
                 for i, a in enumerate(adj_mtx_list):
                     if i != len(adj_mtx_list) - 1:
                         jumped = torch.nonzero(a._values())
-                        edge_id_jump.append(torch.cat([a._indices()[:, jumped][0], a._indices()[:, jumped][2]], dim=1).t())
+                        edge_id_jump.append(
+                            torch.cat(
+                                [
+                                    a._indices()[:, jumped][0],
+                                    a._indices()[:, jumped][2],
+                                ],
+                                dim=1,
+                            ).t()
+                        )
                         edge_w_jump.append(a._values()[jumped])
                         rel_jump.append(a._indices()[:, jumped][1].squeeze(1))
-                        #print(rel_jump[-1].shape)
+                        # print(rel_jump[-1].shape)
                     else:
                         edge_id_jump.append(edge_id_jump[-1])
                         edge_w_jump.append(edge_w_jump[-1])
@@ -305,23 +462,40 @@ class TANGOtestDataset(torch.utils.data.Dataset):
                     edge_id_jump.append(a._indices()[:, jumped])
                     edge_w_jump.append(a._values()[jumped].unsqueeze(-1))
 
-        return (subject_input, relation_input, object_input, label_input, subject_tar, relation_tar, object_tar,
-                label_tar, target_time_stamps, input_time_stamps, edge_index_list, edge_type_list, indep_lab,
-                adj_mtx_list, edge_w_jump, edge_id_jump, rel_jump)
+        return (
+            subject_input,
+            relation_input,
+            object_input,
+            label_input,
+            subject_tar,
+            relation_tar,
+            object_tar,
+            label_tar,
+            target_time_stamps,
+            input_time_stamps,
+            edge_index_list,
+            edge_type_list,
+            indep_lab,
+            adj_mtx_list,
+            edge_w_jump,
+            edge_id_jump,
+            rel_jump,
+        )
 
     def __len__(self):
         return self.len
 
     def get_label(self, label):
         y = np.zeros([self.num_e], dtype=np.float32)
-        for e2 in label: y[e2] = 1.0
+        for e2 in label:
+            y[e2] = 1.0
         return torch.FloatTensor(y)
+
 
 class TANGOtrainDataLoader(torch.utils.data.DataLoader):
     def __init__(self, *args, **kwargs):
-        kwargs['collate_fn'] = self.collate_fn
+        kwargs["collate_fn"] = self.collate_fn
         super(TANGOtrainDataLoader, self).__init__(*args, **kwargs)
-
 
     def collate_fn(self, batch):
         for item in batch:
@@ -342,15 +516,30 @@ class TANGOtrainDataLoader(torch.utils.data.DataLoader):
             edg_jump_id = item[14]
             rel_jump = item[15]
 
-        return (sub_in, rel_in, obj_in, lab_in, sub_tar, rel_tar, obj_tar, lab_tar, tar_ts, in_ts, edg_id, edg_typ,
-                adj_mtx, edg_jump_w, edg_jump_id, rel_jump)
+        return (
+            sub_in,
+            rel_in,
+            obj_in,
+            lab_in,
+            sub_tar,
+            rel_tar,
+            obj_tar,
+            lab_tar,
+            tar_ts,
+            in_ts,
+            edg_id,
+            edg_typ,
+            adj_mtx,
+            edg_jump_w,
+            edg_jump_id,
+            rel_jump,
+        )
 
 
 class TANGOtestDataLoader(torch.utils.data.DataLoader):
     def __init__(self, *args, **kwargs):
-        kwargs['collate_fn'] = self.collate_fn
+        kwargs["collate_fn"] = self.collate_fn
         super(TANGOtestDataLoader, self).__init__(*args, **kwargs)
-
 
     def collate_fn(self, batch):
         for item in batch:
@@ -372,5 +561,22 @@ class TANGOtestDataLoader(torch.utils.data.DataLoader):
             edg_jump_id = item[15]
             rel_jump = item[16]
 
-        return (sub_in, rel_in, obj_in, lab_in, sub_tar, rel_tar, obj_tar, lab_tar, tar_ts, in_ts, edg_id, edg_typ,
-                indep_lab, adj_mtx, edg_jump_w, edg_jump_id, rel_jump)
+        return (
+            sub_in,
+            rel_in,
+            obj_in,
+            lab_in,
+            sub_tar,
+            rel_tar,
+            obj_tar,
+            lab_tar,
+            tar_ts,
+            in_ts,
+            edg_id,
+            edg_typ,
+            indep_lab,
+            adj_mtx,
+            edg_jump_w,
+            edg_jump_id,
+            rel_jump,
+        )

@@ -5,7 +5,11 @@ import numpy as np
 
 def _handle_unused_kwargs(solver, unused_kwargs):
     if len(unused_kwargs) > 0:
-        warnings.warn('{}: Unexpected arguments {}'.format(solver.__class__.__name__, unused_kwargs))
+        warnings.warn(
+            "{}: Unexpected arguments {}".format(
+                solver.__class__.__name__, unused_kwargs
+            )
+        )
 
 
 def _rms_norm(tensor):
@@ -20,8 +24,11 @@ def _mixed_linf_rms_norm(shapes):
             next_total = total + shape.numel()
             out.append(_rms_norm(tensor[total:next_total]))
             total = next_total
-        assert total == tensor.numel(), "Shapes do not total to the full size of the tensor."
+        assert (
+            total == tensor.numel()
+        ), "Shapes do not total to the full size of the tensor."
         return max(out)
+
     return _norm
 
 
@@ -36,8 +43,11 @@ def _wrap_norm(norm_fns, shapes):
             else:
                 out.append(_rms_norm(tensor[total:next_total]))
             total = next_total
-        assert total == tensor.numel(), "Shapes do not total to the full size of the tensor."
+        assert (
+            total == tensor.numel()
+        ), "Shapes do not total to the full size of the tensor."
         return max(out)
+
     return _norm
 
 
@@ -82,7 +92,7 @@ def _select_initial_step(func, t0, y0, order, rtol, atol, norm, f0=None):
     if d1 <= 1e-15 and d2 <= 1e-15:
         h1 = torch.max(torch.tensor(1e-6, dtype=dtype, device=device), h0 * 1e-3)
     else:
-        h1 = (0.01 / max(d1, d2)) ** (1. / float(order + 1))
+        h1 = (0.01 / max(d1, d2)) ** (1.0 / float(order + 1))
 
     return torch.min(100 * h0, h1).to(t_dtype)
 
@@ -99,7 +109,9 @@ def _optimal_step_size(last_step, error_ratio, safety, ifactor, dfactor, order):
     if error_ratio < 1:
         dfactor = torch.ones((), dtype=last_step.dtype, device=last_step.device)
     error_ratio = error_ratio.type_as(last_step)
-    exponent = torch.tensor(order, dtype=last_step.dtype, device=last_step.device).reciprocal()
+    exponent = torch.tensor(
+        order, dtype=last_step.dtype, device=last_step.device
+    ).reciprocal()
     factor = torch.min(ifactor, torch.max(safety / error_ratio ** exponent, dfactor))
     return last_step * factor
 
@@ -113,12 +125,16 @@ def _assert_one_dimensional(name, t):
 
 
 def _assert_increasing(name, t):
-    assert (t[1:] > t[:-1]).all(), '{} must be strictly increasing or decreasing'.format(name)
+    assert (
+        t[1:] > t[:-1]
+    ).all(), "{} must be strictly increasing or decreasing".format(name)
 
 
 def _assert_floating(name, t):
     if not torch.is_floating_point(t):
-        raise TypeError('`{}` must be a floating point Tensor but is a {}'.format(name, t.type()))
+        raise TypeError(
+            "`{}` must be a floating point Tensor but is a {}".format(name, t.type())
+        )
 
 
 def _tuple_tol(name, tol, shapes):
@@ -127,8 +143,12 @@ def _tuple_tol(name, tol, shapes):
     except TypeError:
         return tol
     tol = tuple(tol)
-    assert len(tol) == len(shapes), "If using tupled {} it must have the same length as the tuple y0".format(name)
-    tol = [torch.as_tensor(tol_).expand(shape.numel()) for tol_, shape in zip(tol, shapes)]
+    assert len(tol) == len(
+        shapes
+    ), "If using tupled {} it must have the same length as the tuple y0".format(name)
+    tol = [
+        torch.as_tensor(tol_).expand(shape.numel()) for tol_, shape in zip(tol, shapes)
+    ]
     return torch.cat(tol)
 
 
@@ -167,13 +187,13 @@ def _check_inputs(func, y0, t, rtol, atol, method, options, SOLVERS):
     # Normalise to tensor (non-tupled) input
     shapes = None
     if not torch.is_tensor(y0):
-        assert isinstance(y0, tuple), 'y0 must be either a torch.Tensor or a tuple'
+        assert isinstance(y0, tuple), "y0 must be either a torch.Tensor or a tuple"
         shapes = [y0_.shape for y0_ in y0]
-        rtol = _tuple_tol('rtol', rtol, shapes)
-        atol = _tuple_tol('atol', atol, shapes)
+        rtol = _tuple_tol("rtol", rtol, shapes)
+        atol = _tuple_tol("atol", atol, shapes)
         y0 = torch.cat([y0_.reshape(-1) for y0_ in y0])
         func = _TupleFunc(func, shapes)
-    _assert_floating('y0', y0)
+    _assert_floating("y0", y0)
 
     # Normalise method and options
     if options is None:
@@ -181,51 +201,54 @@ def _check_inputs(func, y0, t, rtol, atol, method, options, SOLVERS):
     else:
         options = options.copy()
     if method is None:
-        method = 'dopri5'
+        method = "dopri5"
     if method not in SOLVERS:
-        raise ValueError('Invalid method "{}". Must be one of {}'.format(method,
-                                                                         '{"' + '", "'.join(SOLVERS.keys()) + '"}.'))
+        raise ValueError(
+            'Invalid method "{}". Must be one of {}'.format(
+                method, '{"' + '", "'.join(SOLVERS.keys()) + '"}.'
+            )
+        )
 
     try:
-        grid_points = options['grid_points']
+        grid_points = options["grid_points"]
     except KeyError:
         pass
     else:
-        assert torch.is_tensor(grid_points), 'grid_points must be a torch.Tensor'
-        _assert_one_dimensional('grid_points', grid_points)
+        assert torch.is_tensor(grid_points), "grid_points must be a torch.Tensor"
+        _assert_one_dimensional("grid_points", grid_points)
         assert not grid_points.requires_grad, "grid_points cannot require gradient"
-        _assert_floating('grid_points', grid_points)
+        _assert_floating("grid_points", grid_points)
 
-    if 'norm' not in options:
+    if "norm" not in options:
         if shapes is None:
             # L2 norm over a single input
-            options['norm'] = _rms_norm
+            options["norm"] = _rms_norm
         else:
             # Mixed Linf/L2 norm over tupled input (chosen mostly just for backward compatibility reasons)
-            options['norm'] = _mixed_linf_rms_norm(shapes)
+            options["norm"] = _mixed_linf_rms_norm(shapes)
 
     # Normalise time
-    assert torch.is_tensor(t), 't must be a torch.Tensor'
-    _assert_one_dimensional('t', t)
-    _assert_floating('t', t)
+    assert torch.is_tensor(t), "t must be a torch.Tensor"
+    _assert_one_dimensional("t", t)
+    _assert_floating("t", t)
     if _decreasing(t):
         t = -t
         func = _ReverseFunc(func)
         try:
-            grid_points = options['grid_points']
+            grid_points = options["grid_points"]
         except KeyError:
             pass
         else:
-            options['grid_points'] = -grid_points
+            options["grid_points"] = -grid_points
 
     # Can only do after having normalised time
-    _assert_increasing('t', t)
+    _assert_increasing("t", t)
     try:
-        grid_points = options['grid_points']
+        grid_points = options["grid_points"]
     except KeyError:
         pass
     else:
-        _assert_increasing('grid_points', grid_points)
+        _assert_increasing("grid_points", grid_points)
 
     # Tol checking
     if torch.is_tensor(rtol):
@@ -241,13 +264,14 @@ def _check_inputs(func, y0, t, rtol, atol, method, options, SOLVERS):
 
     return shapes, func, y0, t, rtol, atol, method, options
 
+
 ####################################################################################################################
 # Chebyshev grids
 def _cby_grids(t_min, t_max, n):
 
-    k = torch.linspace(0.0, np.pi, n+1, dtype=t_min.dtype, device=t_min.device)
+    k = torch.linspace(0.0, np.pi, n + 1, dtype=t_min.dtype, device=t_min.device)
     grids = torch.cos(k)
-    grids = (t_min + t_max) / 2. + grids * (t_min - t_max) / 2.
+    grids = (t_min + t_max) / 2.0 + grids * (t_min - t_max) / 2.0
     return grids
 
 
@@ -259,16 +283,16 @@ def cby_grid_type1(t_min=0, t_max=1, n=11):
         c = np.cos(theta)
         if (n % 2) == 1:
             if 2 * i + 1 == n:
-                c = 0.
-        grids[i] = ((1. - c) * t_min + (1. + c) * t_max) / 2.
+                c = 0.0
+        grids[i] = ((1.0 - c) * t_min + (1.0 + c) * t_max) / 2.0
     return grids
 
 
 def barycentric_weights(n):
     w = np.zeros(n)
-    s = 1.
+    s = 1.0
     for j in range(n):
-        w[j] = s * np.sin((2 * j + 1) * np.pi / (2. * n))
+        w[j] = s * np.sin((2 * j + 1) * np.pi / (2.0 * n))
         s = -s
     return w
 
@@ -280,15 +304,15 @@ def _cby1_interp(w, nodes, values, t):
         return values[idx][0]
 
     cof = w / (t - nodes)
-    s = ''
+    s = ""
     if len(values.shape) == 5:
-        s = 'i,ijkmn->jkmn'
+        s = "i,ijkmn->jkmn"
     elif len(values.shape) == 4:
-        s = 'i,ijkm->jkm'
+        s = "i,ijkm->jkm"
     elif len(values.shape) == 3:
-        s = 'i,ijk->jk'
+        s = "i,ijk->jk"
     elif len(values.shape) == 2:
-        s = 'i,ij->j'
+        s = "i,ij->j"
     num = torch.einsum(s, [cof, values])
     den = cof.sum()
     res = num / den
