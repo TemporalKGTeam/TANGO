@@ -21,7 +21,9 @@ class AdaptiveStepsizeODESolver(metaclass=abc.ABCMeta):
         raise NotImplementedError
 
     def integrate(self, t):
-        solution = torch.empty(len(t), *self.y0.shape, dtype=self.y0.dtype, device=self.y0.device)
+        solution = torch.empty(
+            len(t), *self.y0.shape, dtype=self.y0.dtype, device=self.y0.device
+        )
         solution[0] = self.y0
         t = t.to(self.dtype)
         self._before_integrate(t)
@@ -33,10 +35,12 @@ class AdaptiveStepsizeODESolver(metaclass=abc.ABCMeta):
 class FixedGridODESolver(metaclass=abc.ABCMeta):
     order: int
 
-    def __init__(self, func, y0, step_size=None, grid_constructor=None, **unused_kwargs):
-        unused_kwargs.pop('rtol', None)
-        unused_kwargs.pop('atol', None)
-        unused_kwargs.pop('norm', None)
+    def __init__(
+        self, func, y0, step_size=None, grid_constructor=None, **unused_kwargs
+    ):
+        unused_kwargs.pop("rtol", None)
+        unused_kwargs.pop("atol", None)
+        unused_kwargs.pop("norm", None)
         _handle_unused_kwargs(self, unused_kwargs)
         del unused_kwargs
 
@@ -54,7 +58,9 @@ class FixedGridODESolver(metaclass=abc.ABCMeta):
             if grid_constructor is None:
                 self.grid_constructor = self._grid_constructor_from_step_size(step_size)
             else:
-                raise ValueError("step_size and grid_constructor are mutually exclusive arguments.")
+                raise ValueError(
+                    "step_size and grid_constructor are mutually exclusive arguments."
+                )
 
     @staticmethod
     def _grid_constructor_from_step_size(step_size):
@@ -63,11 +69,15 @@ class FixedGridODESolver(metaclass=abc.ABCMeta):
             end_time = t[-1]
 
             niters = torch.ceil((end_time - start_time) / step_size + 1).item()
-            t_infer = torch.arange(0, niters, dtype=t.dtype, device=t.device) * step_size + start_time
+            t_infer = (
+                torch.arange(0, niters, dtype=t.dtype, device=t.device) * step_size
+                + start_time
+            )
             if t_infer[-1] > t[-1]:
                 t_infer[-1] = t[-1]
 
             return t_infer
+
         return _grid_constructor
 
     @abc.abstractmethod
@@ -78,7 +88,9 @@ class FixedGridODESolver(metaclass=abc.ABCMeta):
         time_grid = self.grid_constructor(self.func, self.y0, t)
         assert time_grid[0] == t[0] and time_grid[-1] == t[-1]
 
-        solution = torch.empty(len(t), *self.y0.shape, dtype=self.y0.dtype, device=self.y0.device)
+        solution = torch.empty(
+            len(t), *self.y0.shape, dtype=self.y0.dtype, device=self.y0.device
+        )
         solution[0] = self.y0
 
         j = 1

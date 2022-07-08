@@ -35,7 +35,9 @@ def _interp_evaluate(coefficients, t0, t1, t):
         Polynomial interpolation of the coefficients at time `t`.
     """
 
-    assert (t0 <= t) & (t <= t1), 'invalid interpolation, fails `t0 <= t <= t1`: {}, {}, {}'.format(t0, t, t1)
+    assert (t0 <= t) & (
+        t <= t1
+    ), "invalid interpolation, fails `t0 <= t <= t1`: {}, {}, {}".format(t0, t, t1)
     x = (t - t0) / (t1 - t0)
 
     total = coefficients[0] + x * coefficients[1]
